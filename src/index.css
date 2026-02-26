@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+@theme {
+  --color-blood-50: #fff1f2;
+  --color-blood-100: #ffe4e6;
+  --color-blood-200: #fecdd3;
+  --color-blood-300: #fda4af;
+  --color-blood-400: #fb7185;
+  --color-blood-500: #f43f5e;
+  --color-blood-600: #e11d48;
+  --color-blood-700: #be123c;
+  --color-blood-800: #9f1239;
+  --color-blood-900: #881337;
+  --color-blood-950: #4c0519;
+}
+
+:root {
+  font-family: 'Outfit', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: dark;
+  background-color: #0c0a09;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background-color: #0c0a09;
+}
+
+@layer base {
+  body {
+    @apply bg-stone-950 text-stone-100;
+  }
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.glass-red {
+  background: rgba(225, 29, 72, 0.05);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(225, 29, 72, 0.2);
+}
+
+.text-gradient {
+  background: linear-gradient(to right, #fff, #fb7185);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.blood-gradient {
+  background: linear-gradient(135deg, #e11d48 0%, #881337 100%);
+}
+
+.pulse-red {
+  box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.7);
+  animation: pulse-red 2s infinite;
+}
+
+@keyframes pulse-red {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.7);
+  }
+
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 10px rgba(225, 29, 72, 0);
+  }
+
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(225, 29, 72, 0);
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0c0a09;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #e11d48;
+}
+
+/* Page Transitions */
+.page-enter {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.page-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 300ms, transform 300ms;
+}
+
+.page-exit {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.page-exit-active {
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 300ms, transform 300ms;
+}
