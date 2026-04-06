@@ -1,191 +1,242 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import {
-    History,
-    TrendingUp,
-    MapPin,
-    Check,
-    Activity,
-    Bell,
-    Heart,
-    Edit3
-} from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
-import ProfileEditor from '../components/ProfileEditor';
-import { Link } from 'react-router-dom';
+import { useDonor } from '../lib/hooks/useDonor';
+import { useRequests } from '../lib/hooks/useRequests';
+import AlertCard from '../components/AlertCard';
+import BloodGroupBadge from '../components/BloodGroupBadge';
+import { pageVariants, staggerContainer, cardVariants } from '../components/animations';
+import { Droplet, Trophy, Activity, Clock, ChevronRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import MissionTracker from '../components/MissionTracker';
+import { getSocket } from '../lib/socket';
 
 export default function DonorDashboard() {
-    const { donorProfile, requests } = useAppStore();
-    const [isEditOpen, setIsEditOpen] = useState(false);
+  const { currentUser, activeRequests: globalRequests, upsertRequest, addToast } = useAppStore();
+  const { getStats, getHistory } = useDonor();
+  const { getRequests, assignDonor } = useRequests();
+  const navigate = useNavigate();
+  const socket = getSocket();
 
-    const activeDonation = requests.find(r => r.status === 'Accepted' && (r.donorId === 'me' || r.donorId === donorProfile.name));
+  const [stats, setStats] = useState({ totalDonations: 0, livesSaved: 0 });
+  const [history, setHistory] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-    const matchingAlertsCount = requests.filter(r =>
-        r.status === 'Pending' && (r.bloodType === donorProfile.bloodGroup || r.bloodType === 'O-')
-    ).length;
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [statsData, matchedData, assignedData, histData] = await Promise.all([
+          getStats(),
+          getRequests({ matched: true }), 
+          getRequests({ matched: false }),
+          getHistory()
+        ]);
 
+        // Populate global store
+        if (Array.isArray(matchedData)) matchedData.forEach((r: any) => upsertRequest(r));
+        if (Array.isArray(assignedData)) assignedData.forEach((r: any) => upsertRequest(r));
+
+        setStats(statsData);
+        setHistory(histData);
+      } catch (e) {
+        console.error("Dashboard fetch error", e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  const getDonorId = (assignedId: any) => {
+    if (!assignedId) return null;
+    return typeof assignedId === 'object' ? assignedId._id : assignedId;
+  };
+
+  const handleAccept = (requestId: string) => {
+    if (!currentUser?._id) return;
+    
+    // OPTIMISTIC UPDATE: The AlertCard already called the API, 
+    // we just need to update the global store to show the map immediately.
+    const acceptedReq = globalRequests.find(r => r._id === requestId);
+    if (acceptedReq) {
+      upsertRequest({ 
+        ...acceptedReq, 
+        status: 'matched', 
+        assignedDonorId: currentUser._id 
+      });
+    }
+  };
+
+  const refreshRequests = async () => {
+    try {
+      const data = await getRequests({ matched: true });
+      if (Array.isArray(data)) {
+        data.forEach(req => upsertRequest(req));
+      }
+    } catch (e) {
+      console.error("Refresh failed", e);
+    }
+  };
+
+  if (isLoading) {
     return (
-        <div className="pt-24 pb-12 px-4 container mx-auto font-outfit">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
-                <div>
-                    <h1 className="text-4xl font-black text-white mb-2 tracking-tight">
-                        Dashboard <span className="text-blood-600">Overview</span>
-                    </h1>
-                    <p className="text-stone-400">Welcome back, <span className="text-white font-bold">{donorProfile.name}</span>. You are saving lives today.</p>
-                </div>
-
-                <Link to="/notifications" className="relative group">
-                    <div className="bg-stone-900 border border-white/10 px-8 py-4 rounded-2xl flex items-center gap-4 hover:border-blood-500 transition-all shadow-xl">
-                        <div className="relative">
-                            <Bell className="w-6 h-6 text-blood-500" />
-                            {matchingAlertsCount > 0 && <span className="absolute -top-1 -right-1 w-3 h-3 bg-blood-600 rounded-full animate-pulse border-2 border-stone-900" />}
-                        </div>
-                        <div>
-                            <p className="text-[10px] font-black text-stone-500 uppercase tracking-widest leading-none mb-1">Emergency Alerts</p>
-                            <p className="text-sm font-black text-white leading-none">{matchingAlertsCount} Matches Nearby</p>
-                        </div>
-                    </div>
-                </Link>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                {/* Left Stats Column */}
-                <div className="lg:col-span-4 space-y-8">
-                    <div className="glass rounded-[3rem] p-10 border-white/5 relative overflow-hidden shadow-2xl">
-                        <div className="absolute top-0 right-0 w-40 h-40 bg-blood-600/10 blur-[80px] -mr-20 -mt-20 -z-10" />
-
-                        <div className="flex flex-col items-center text-center">
-                            <div className="relative mb-8">
-                                <div className="w-32 h-32 rounded-[2rem] bg-stone-900 border-2 border-blood-600 p-1 rotate-3 shadow-2xl">
-                                    <div className="w-full h-full rounded-[1.5rem] bg-stone-800 flex items-center justify-center text-4xl font-black text-white -rotate-3 uppercase">
-                                        {donorProfile.name.split(' ').map(n => n[0]).join('')}
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={() => setIsEditOpen(true)}
-                                    className="absolute -bottom-2 -right-2 bg-white text-stone-950 p-3 rounded-2xl shadow-xl hover:scale-110 transition-all border-4 border-stone-950"
-                                >
-                                    <Edit3 className="w-4 h-4" />
-                                </button>
-                            </div>
-
-                            <h3 className="text-3xl font-black text-white mb-1 tracking-tighter">{donorProfile.name}</h3>
-                            <div className="flex items-center gap-2 mb-8">
-                                <span className="text-[10px] font-black text-blood-500 uppercase tracking-[0.2em] bg-blood-600/10 px-3 py-1 rounded-full border border-blood-600/20 shadow-sm">
-                                    {donorProfile.bloodGroup} Donor
-                                </span>
-                                <span className="text-[10px] font-black text-green-500 uppercase tracking-[0.2em] bg-green-500/10 px-3 py-1 rounded-full border border-green-500/20">
-                                    Eligible
-                                </span>
-                            </div>
-
-                            <div className="w-full grid grid-cols-2 gap-4">
-                                <div className="bg-stone-950/50 p-5 rounded-3xl border border-white/5">
-                                    <div className="text-[9px] font-black text-stone-600 uppercase mb-1 tracking-widest">Global Rank</div>
-                                    <div className="text-xl font-black text-white italic">#12</div>
-                                </div>
-                                <div className="bg-stone-950/50 p-5 rounded-3xl border border-white/5">
-                                    <div className="text-[9px] font-black text-stone-600 uppercase mb-1 tracking-widest">My Points</div>
-                                    <div className="text-xl font-black text-blood-500">{donorProfile.points}</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="glass rounded-[3rem] p-8 border-white/5">
-                        <h4 className="text-[10px] font-black text-stone-500 mb-8 uppercase tracking-[0.3em]">Lifetime Engagement</h4>
-                        <div className="space-y-8">
-                            <div className="flex items-center gap-6">
-                                <div className="w-14 h-14 bg-rose-500/10 rounded-2xl flex items-center justify-center border border-rose-500/20">
-                                    <TrendingUp className="text-rose-500 w-7 h-7" />
-                                </div>
-                                <div>
-                                    <div className="text-3xl font-black text-white">{donorProfile.donationsCount}</div>
-                                    <div className="text-[10px] font-black text-stone-600 uppercase tracking-widest mt-1">Units Contributed</div>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-6">
-                                <div className="w-14 h-14 bg-blue-500/10 rounded-2xl flex items-center justify-center border border-blue-500/20">
-                                    <Heart className="text-blue-500 w-7 h-7" />
-                                </div>
-                                <div>
-                                    <div className="text-3xl font-black text-white">{donorProfile.donationsCount * 3}</div>
-                                    <div className="text-[10px] font-black text-stone-600 uppercase tracking-widest mt-1">Estimated Lives Saved</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Right Content Column */}
-                <div className="lg:col-span-8 space-y-8">
-                    {/* Active Donation Tracker */}
-                    {activeDonation && (
-                        <motion.div
-                            initial={{ opacity: 0, y: -20, scale: 0.95 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            className="blood-gradient p-10 rounded-[3rem] shadow-2xl shadow-blood-900/60 relative overflow-hidden group"
-                        >
-                            <div className="absolute top-0 right-0 p-10 opacity-10 group-hover:scale-110 transition-transform duration-700">
-                                <Activity className="w-48 h-48" />
-                            </div>
-                            <div className="relative z-10">
-                                <div className="flex items-center gap-2 bg-black/20 text-white w-fit px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest mb-6 border border-white/20">
-                                    <Activity className="w-3.5 h-3.5 animate-pulse" /> Active Matching Proceeding
-                                </div>
-                                <h3 className="text-4xl font-black text-white mb-2 tracking-tighter">Proceed to {activeDonation.hospital}</h3>
-                                <p className="text-blood-100 mb-10 max-w-md font-medium text-lg leading-relaxed opacity-90">Please arrive at the facility. Your matching profile has been verified by the medical team.</p>
-
-                                <div className="flex flex-wrap gap-4">
-                                    <button className="bg-white text-blood-700 px-10 py-5 rounded-[2rem] font-black text-xs tracking-[0.2em] uppercase hover:scale-[1.05] transition-all shadow-2xl">
-                                        <MapPin className="w-5 h-5 inline mr-2" /> Navigate
-                                    </button>
-                                    <button className="bg-black/20 text-white border border-white/20 px-10 py-5 rounded-[2rem] font-black text-xs tracking-[0.2em] uppercase hover:bg-black/40 transition-all">
-                                        Help Support
-                                    </button>
-                                </div>
-                            </div>
-                        </motion.div>
-                    )}
-
-                    {/* Donation Timeline / History Placeholder */}
-                    <div className="glass rounded-[3rem] p-10 border-white/5 h-full">
-                        <div className="flex items-center justify-between mb-10">
-                            <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
-                                <History className="text-stone-500 w-8 h-8" />
-                                Donation <span className="text-blood-600">Timeline</span>
-                            </h2>
-                        </div>
-
-                        <div className="relative border-l-2 border-white/5 ml-4 pl-12 space-y-12 pb-4">
-                            {[
-                                { date: 'Oct 15, 2023', hospital: 'City General', status: 'Completed', reward: '+50 pts' },
-                                { date: 'July 22, 2023', hospital: 'Red Cross Center', status: 'Completed', reward: '+50 pts' },
-                                { date: 'Mar 10, 2023', hospital: 'St. Mary\'s', status: 'Completed', reward: '+50 pts' }
-                            ].map((item, i) => (
-                                <div key={i} className="relative group">
-                                    <div className="absolute -left-[61px] top-0 w-6 h-6 bg-stone-900 border-2 border-blood-600 rounded-full group-hover:bg-blood-600 transition-colors" />
-                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                        <div>
-                                            <p className="text-[10px] font-black text-stone-600 uppercase mb-1 tracking-widest">{item.date}</p>
-                                            <h4 className="text-white font-black text-xl tracking-tight">{item.hospital}</h4>
-                                            <div className="flex items-center gap-2 mt-2">
-                                                <Check className="w-3.5 h-3.5 text-green-500" />
-                                                <span className="text-[10px] font-bold text-stone-500 uppercase">Donation Successful</span>
-                                            </div>
-                                        </div>
-                                        <div className="bg-white/5 px-6 py-3 rounded-2xl border border-white/10 group-hover:border-blood-500/30 transition-all">
-                                            <span className="text-[10px] font-black text-blood-400 uppercase tracking-[0.2em]">{item.reward}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <ProfileEditor isOpen={isEditOpen} onClose={() => setIsEditOpen(false)} />
-        </div>
+      <div className="h-full flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-[var(--orange-500)] border-t-transparent rounded-full animate-spin" />
+      </div>
     );
+  }
+
+  const ongoingMission = globalRequests.find(r => 
+    getDonorId(r.assignedDonorId) === currentUser?._id && 
+    !['completed', 'cancelled'].includes(r.status)
+  );
+
+  const emergencyMatches = globalRequests.filter(r => 
+    !['completed', 'cancelled'].includes(r.status) && 
+    getDonorId(r.assignedDonorId) !== currentUser?._id
+  );
+
+  return (
+    <motion.div 
+      variants={pageVariants} initial="initial" animate="animate" exit="exit"
+      className="space-y-8 pb-12"
+    >
+      {/* Hero Section */}
+      <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-[var(--border-light)] relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-[var(--orange-100)] to-transparent rounded-full -mr-32 -mt-32 opacity-50" />
+        
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center gap-8">
+          <div className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-[var(--orange-400)] to-[var(--orange-600)] flex items-center justify-center text-white text-3xl font-black shadow-xl shadow-orange-200">
+            {currentUser?.name?.[0].toUpperCase()}
+            <div className="absolute -bottom-1 -right-1 bg-white p-1 rounded-xl shadow-lg">
+              <div className="bg-[var(--orange-500)] text-white text-[10px] px-2 py-0.5 rounded-lg font-black">{currentUser?.bloodGroup}</div>
+            </div>
+          </div>
+          
+          <div className="flex-1">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-50 text-[var(--orange-600)] text-xs font-bold mb-3 border border-orange-100">
+              <Activity className="w-3.5 h-3.5" /> HERO LEVEL 4
+            </div>
+            <h1 className="font-display text-4xl font-bold text-[var(--text-primary)] mb-2">
+              Welcome back, {currentUser?.name?.split(' ')[0]}!
+            </h1>
+            <p className="text-[var(--text-muted)] font-medium max-w-xl">
+              You are currently marked as eligible to donate. Keep an eye out for emergency matches.
+            </p>
+          </div>
+
+          <div className="flex gap-4">
+            <div className="px-6 py-4 bg-stone-50 rounded-3xl border border-stone-100 text-center min-w-[120px]">
+              <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1 font-body">Donations</p>
+              <p className="text-3xl font-black text-[var(--text-primary)]">{stats.totalDonations}</p>
+            </div>
+            <div className="px-6 py-4 bg-stone-50 rounded-3xl border border-stone-100 text-center min-w-[120px]">
+              <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1 font-body">Lives Saved</p>
+              <p className="text-3xl font-black text-[var(--orange-600)]">{stats.livesSaved || (stats.totalDonations * 3)}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* Missions Section */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="flex items-center justify-between px-2">
+            <h2 className="font-display text-2xl font-bold text-[var(--text-primary)] flex items-center gap-3">
+              Emergency Matches
+              {emergencyMatches.length > 0 && <span className="w-6 h-6 rounded-lg bg-red-500 text-white text-[10px] flex items-center justify-center font-black animate-pulse">{emergencyMatches.length}</span>}
+            </h2>
+            <button onClick={refreshRequests} className="text-[11px] font-black text-[var(--orange-600)] uppercase tracking-widest hover:translate-y-[-1px] transition-transform">Refresh Map</button>
+          </div>
+
+          {ongoingMission ? (
+            <MissionTracker request={ongoingMission} />
+          ) : (
+            <motion.div 
+              variants={staggerContainer} initial="initial" animate="animate"
+              className="grid gap-6"
+            >
+              {emergencyMatches.length > 0 ? (
+                emergencyMatches.map(req => (
+                  <AlertCard 
+                    key={req._id}
+                    alert={req}
+                    onAccepted={() => handleAccept(req._id)}
+                    onDecline={() => {}}
+                  />
+                ))
+              ) : (
+                <div className="bg-stone-50 rounded-[2.5rem] border-2 border-dashed border-stone-200 py-16 flex flex-col items-center justify-center text-center px-8">
+                  <div className="w-16 h-16 rounded-3xl bg-white flex items-center justify-center mb-4 shadow-sm">
+                    <Droplet className="w-8 h-8 text-stone-300" />
+                  </div>
+                  <h3 className="font-bold text-lg text-stone-400">No active emergencies nearby</h3>
+                  <p className="text-sm text-stone-300 max-w-xs mt-2 font-medium">We'll alert you immediately when someone with {currentUser?.bloodGroup} needs your help.</p>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </div>
+
+        {/* Sidebar */}
+        <aside className="space-y-6">
+          <div className="flex items-center justify-between px-2">
+            <h2 className="font-display text-xl font-bold text-[var(--text-primary)]">Recent History</h2>
+            <button onClick={() => navigate('/donor/history')} className="p-2 hover:bg-stone-100 rounded-full transition-colors">
+              <ChevronRight className="w-5 h-5 text-stone-400" />
+            </button>
+          </div>
+
+          <div className="bg-white rounded-[2.5rem] p-6 border border-[var(--border-light)] shadow-sm">
+            {history.length > 0 ? (
+              <div className="space-y-6">
+                {history.slice(0, 3).map((item, idx) => (
+                  <div key={item._id} className="relative flex gap-4">
+                    {idx !== history.slice(0, 3).length - 1 && <div className="absolute top-10 left-5 bottom-0 w-px bg-stone-100" />}
+                    <div className="w-10 h-10 rounded-2xl bg-orange-50 flex-shrink-0 flex items-center justify-center">
+                      <Clock className="w-5 h-5 text-[var(--orange-500)]" />
+                    </div>
+                    <div className="flex-1 pt-1">
+                      <div className="flex justify-between items-start mb-1">
+                        <p className="text-[11px] font-bold text-stone-400">{new Date(item.createdAt).toLocaleDateString()}</p>
+                        <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-green-50 text-green-600 border border-green-100">
+                          {item.status}
+                        </span>
+                      </div>
+                      <p className="text-sm font-bold text-[var(--text-primary)]">{item.hospitalName}</p>
+                    </div>
+                  </div>
+                ))}
+                <button 
+                  onClick={() => navigate('/donor/history')}
+                  className="w-full py-3 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)] hover:text-[var(--orange-600)] transition-colors text-center border-t border-stone-50 mt-2"
+                >
+                  View Full Timeline
+                </button>
+              </div>
+            ) : (
+              <div className="text-center py-6">
+                <p className="text-sm font-medium text-stone-300">No donation history recorded yet.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Achievement Teaser */}
+          <div className="bg-gradient-to-br from-stone-900 to-black rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-xl">
+             <Trophy className="absolute -bottom-6 -right-6 w-32 h-32 text-white/10 rotate-12" />
+             <div className="relative z-10">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-400 mb-2">Progress Update</p>
+                <h4 className="text-xl font-bold mb-4">Almost to your Next Badge!</h4>
+                <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden mb-3">
+                   <div className="bg-gradient-to-r from-orange-400 to-orange-600 h-full w-[75%]" />
+                </div>
+                <p className="text-xs font-medium text-white/50">Next Milestone: Platinum Lifesaver (5 more units)</p>
+             </div>
+          </div>
+        </aside>
+      </div>
+    </motion.div>
+  );
 }

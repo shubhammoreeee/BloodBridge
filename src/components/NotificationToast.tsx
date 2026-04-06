@@ -1,51 +1,78 @@
+import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '../store/useAppStore';
-import { Bell, CheckCircle, AlertCircle, X } from 'lucide-react';
+import { X, AlertCircle, CheckCircle2, Info, Star } from 'lucide-react';
 
 export default function NotificationToast() {
-    const { notifications, removeNotification } = useAppStore();
+  const { toasts, removeToast } = useAppStore();
 
-    return (
-        <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-3 pointer-events-none">
-            <AnimatePresence>
-                {notifications.map((n) => (
-                    <motion.div
-                        key={n.id}
-                        initial={{ opacity: 0, x: 50, scale: 0.9 }}
-                        animate={{ opacity: 1, x: 0, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
-                        className="pointer-events-auto"
-                    >
-                        <div className={`
-              min-w-[320px] p-4 rounded-2xl shadow-2xl border flex items-center gap-4 glass
-              ${n.type === 'alert' ? 'border-blood-500/50 bg-blood-950/40 text-blood-200' :
-                                n.type === 'success' ? 'border-green-500/50 bg-green-950/40 text-green-200' :
-                                    'border-white/20 bg-stone-900/80 text-white'}
-            `}>
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center
-                ${n.type === 'alert' ? 'bg-blood-500/20 text-blood-400' :
-                                    n.type === 'success' ? 'bg-green-500/20 text-green-400' :
-                                        'bg-white/10 text-white'}
-              `}>
-                                {n.type === 'alert' ? <AlertCircle className="w-6 h-6" /> :
-                                    n.type === 'success' ? <CheckCircle className="w-6 h-6" /> :
-                                        <Bell className="w-6 h-6" />}
-                            </div>
+  return (
+    <div className="fixed top-24 right-6 z-50 flex flex-col gap-3 pointer-events-none w-full max-w-[380px]">
+      <AnimatePresence mode="popLayout">
+        {toasts.map((toast) => (
+          <ToastCard key={toast.id} toast={toast} onRemove={() => removeToast(toast.id)} />
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
 
-                            <div className="flex-1">
-                                <p className="text-sm font-semibold">{n.message}</p>
-                            </div>
+function ToastCard({ toast, onRemove }: { toast: any, onRemove: () => void }) {
+  useEffect(() => {
+    const timer = setTimeout(onRemove, 5000);
+    return () => clearTimeout(timer);
+  }, [onRemove]);
 
-                            <button
-                                onClick={() => removeNotification(n.id)}
-                                className="p-1 hover:bg-white/10 rounded-lg transition-colors"
-                            >
-                                <X className="w-4 h-4" />
-                            </button>
-                        </div>
-                    </motion.div>
-                ))}
-            </AnimatePresence>
+  const config = {
+    alert:   { icon: <AlertCircle className="w-5 h-5 text-red-500" />,   color: 'bg-red-500',   bgColor: 'bg-red-50' },
+    success: { icon: <CheckCircle2 className="w-5 h-5 text-green-500" />, color: 'bg-green-500', bgColor: 'bg-green-50' },
+    info:    { icon: <Info className="w-5 h-5 text-blue-500" />,          color: 'bg-blue-500',  bgColor: 'bg-blue-50' },
+    reward:  { icon: <Star className="w-5 h-5 text-[var(--orange-500)]" />, color: 'bg-[var(--orange-500)]', bgColor: 'bg-[var(--orange-50)]' }
+  }[toast.type as 'alert' | 'success' | 'info' | 'reward'] || { 
+    icon: <Info className="w-5 h-5 text-stone-500" />, color: 'bg-stone-500', bgColor: 'bg-stone-50' 
+  };
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, x: 100, scale: 0.9 }}
+      animate={{ opacity: 1, x: 0, scale: 1 }}
+      exit={{ opacity: 0, x: 100, scale: 0.9 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+      className="bg-white rounded-2xl shadow-xl border border-[var(--border-light)] overflow-hidden pointer-events-auto flex relative"
+    >
+      <div className={`w-1 shrink-0 ${config.color}`} />
+      
+      <div className="flex px-4 py-4 gap-3 w-full">
+        <div className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center ${config.bgColor}`}>
+          {config.icon}
         </div>
-    );
+        
+        <div className="flex-grow pt-0.5">
+          <h4 className="font-body text-[15px] font-bold text-[var(--text-primary)] leading-snug">
+            {toast.title}
+          </h4>
+          {toast.message && (
+            <p className="font-body text-[13px] text-[var(--text-muted)] mt-1 line-clamp-2">
+              {toast.message}
+            </p>
+          )}
+        </div>
+
+        <button 
+          onClick={onRemove}
+          className="shrink-0 text-stone-400 hover:text-stone-600 transition-colors p-1"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      <motion.div 
+        className={`absolute bottom-0 left-0 h-[3px] ${config.color} opacity-20`}
+        initial={{ width: "100%" }}
+        animate={{ width: "0%" }}
+        transition={{ duration: 5, ease: "linear" }}
+      />
+    </motion.div>
+  );
 }

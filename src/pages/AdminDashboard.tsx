@@ -1,290 +1,250 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import {
-    Plus,
-    Users,
-    Droplets,
-    MapPin,
-    AlertTriangle,
-    History,
-    XCircle,
-    Clock,
-    LayoutDashboard,
-    Send,
-    Zap,
-    ArrowRight
+import { useAppStore } from '../store/useAppStore';
+import { useAdmin } from '../lib/hooks/useAdmin';
+import { useRequests } from '../lib/hooks/useRequests';
+import { pageVariants, staggerContainer, cardVariants } from '../components/animations';
+import { 
+  Users, AlertCircle, Database, Activity, 
+  Map as MapIcon, Plus, ChevronRight, Droplet,
+  ArrowUpRight, ArrowDownRight, Clock
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import BloodGroupBadge from '../components/BloodGroupBadge';
+import StatusBadge from '../components/StatusBadge';
+import EmergencyForm from '../components/EmergencyForm';
 import DonorDetailPanel from '../components/DonorDetailPanel';
-import { useAppStore, type BloodRequest, type BloodGroup, type Urgency } from '../store/useAppStore';
-import { cn } from '../lib/utils';
-import MapView from '../components/MapView';
 
 export default function AdminDashboard() {
-    const { requests, inventory, addRequest, addNotification, runSystemDemo, isDemoRunning } = useAppStore();
-    const [showRequestForm, setShowRequestForm] = useState(false);
-    const [selectedRequest, setSelectedRequest] = useState<BloodRequest | null>(null);
+  const navigate = useNavigate();
+  const { currentUser, inventory, setInventory, activeRequests, upsertRequest } = useAppStore();
+  const { getInventory, getNearbyDonors } = useAdmin();
+  const { getRequests } = useRequests();
 
-    const [form, setForm] = useState<{
-        bloodType: BloodGroup;
-        units: number;
-        hospital: string;
-        location: string;
-        urgency: Urgency;
-        lat: number;
-        lng: number;
-    }>({
-        bloodType: 'A+',
-        units: 1,
-        hospital: 'Central Mercy Hospital',
-        location: 'Sector 5',
-        urgency: 'Normal',
-        lat: 40.7128,
-        lng: -74.006
-    });
+  const [isEmergencyFormOpen, setIsEmergencyFormOpen] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<any | null>(null);
+  const [nearbyDonorsCount, setNearbyDonorsCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!form.hospital || !form.location) {
-            addNotification("Please fill all fields", "alert");
-            return;
-        }
+  // Active requests to display in the list
+  const displayRequests = activeRequests.filter(r => 
+    r.status !== 'completed' && r.status !== 'cancelled'
+  );
 
-        addRequest(form);
-        addNotification("Emergency broadcast initiated!", "success");
-        setShowRequestForm(false);
-    };
+  const fetchData = async () => {
+    try {
+      const [invData, reqData, donorsData] = await Promise.all([
+        getInventory(),
+        getRequests(),
+        getNearbyDonors(10)
+      ]);
+      setInventory(invData);
+      // Populate active requests store
+      reqData.forEach((req: any) => upsertRequest(req));
+      setNearbyDonorsCount(donorsData.length);
+    } catch (e) {
+      console.error("Admin Dashboard fetch error", e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  if (isLoading) {
     return (
-        <div className="pt-24 pb-12 px-4 container mx-auto font-outfit">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
-                <div>
-                    <h1 className="text-4xl font-black text-white mb-2 flex items-center gap-3">
-                        <LayoutDashboard className="text-blood-500 w-10 h-10" />
-                        Admin <span className="text-blood-600">Portal</span>
-                    </h1>
-                    <p className="text-stone-400">Response Coordination and Inventory Control.</p>
-                </div>
-
-                <div className="flex flex-wrap gap-4">
-                    <button
-                        onClick={runSystemDemo}
-                        disabled={isDemoRunning}
-                        className={cn(
-                            "px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 transition-all border shadow-xl",
-                            isDemoRunning ? "bg-stone-800 text-stone-500 border-white/5" : "bg-white text-stone-950 border-white hover:scale-[1.05]"
-                        )}
-                    >
-                        <Zap className={cn("w-4 h-4", isDemoRunning ? "text-stone-700" : "text-blood-500")} />
-                        {isDemoRunning ? 'Simulation Running...' : 'RUN SYSTEM DEMO'}
-                    </button>
-
-                    <button
-                        onClick={() => setShowRequestForm(true)}
-                        className="blood-gradient text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 shadow-lg shadow-blood-900/40 hover:scale-[1.05] transition-all"
-                    >
-                        <Plus className="w-4 h-4" /> Raise Emergency
-                    </button>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-12">
-                {/* Coordination Map */}
-                <div className="lg:col-span-8 h-[600px] relative">
-                    <div className="absolute top-6 left-6 z-10">
-                        <div className="bg-stone-950/80 backdrop-blur-md p-3 rounded-xl border border-white/10 shadow-2xl flex items-center gap-4">
-                            <div>
-                                <h4 className="text-[10px] font-black text-white uppercase tracking-widest mb-1">Response Map</h4>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                                    <span className="text-[8px] font-bold text-stone-500">Live Coordinating Center</span>
-                                </div>
-                            </div>
-                            <Link to="/admin/map" className="bg-blood-600 text-white p-2 rounded-lg hover:bg-blood-500 transition-colors">
-                                <Zap className="w-4 h-4" />
-                            </Link>
-                        </div>
-                    </div>
-                    <MapView />
-                </div>
-
-                {/* Inventory Column */}
-                <div className="lg:col-span-4 space-y-8">
-                    <div className="glass rounded-[2.5rem] p-8 border-white/5 h-full relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-blood-600/5 blur-3xl -mr-16 -mt-16" />
-                        <h2 className="text-xl font-black text-white mb-8 flex items-center gap-2 uppercase tracking-tight">
-                            <Droplets className="text-blood-500 w-5 h-5" /> Bank Inventory
-                        </h2>
-
-                        <div className="grid grid-cols-2 gap-3 mb-8">
-                            {(Object.entries(inventory) as [BloodGroup, number][]).slice(0, 8).map(([type, stock]) => (
-                                <div key={type} className="bg-stone-900/60 p-4 rounded-2xl border border-white/5 group hover:border-blood-500/20 transition-all">
-                                    <div className="flex justify-between items-center mb-1">
-                                        <span className="text-lg font-black text-white">{type}</span>
-                                        <span className={cn(
-                                            "text-[8px] font-black px-1.5 py-0.5 rounded uppercase",
-                                            stock < 20 ? "bg-rose-500/20 text-rose-500" : "bg-green-500/20 text-green-500"
-                                        )}>{stock < 20 ? 'Low' : 'OK'}</span>
-                                    </div>
-                                    <div className="w-full bg-stone-950 h-1 rounded-full mb-1">
-                                        <div className={cn("h-full rounded-full transition-all duration-1000", stock < 20 ? "bg-rose-500 shadow-[0_0_5px_rgba(244,63,94,0.5)]" : "bg-blood-600")} style={{ width: `${Math.min(stock, 100)}%` }} />
-                                    </div>
-                                    <span className="text-[8px] font-bold text-stone-600 uppercase italic">{stock} Units Left</span>
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-4 bg-white/5 p-4 rounded-2xl border border-white/10 group cursor-help">
-                                <AlertTriangle className="w-5 h-5 text-amber-500 group-hover:scale-110 transition-transform" />
-                                <div>
-                                    <p className="text-[10px] font-black text-white uppercase mb-0.5">Alert Level: Optimal</p>
-                                    <p className="text-[8px] text-stone-500 leading-none">All clusters operational.</p>
-                                </div>
-                            </div>
-
-                            <div className="flex items-center gap-4 bg-white/5 p-4 rounded-2xl border border-white/10 group">
-                                <Users className="w-5 h-5 text-blood-400" />
-                                <div>
-                                    <p className="text-[10px] font-black text-white uppercase mb-0.5">Available Donors: 24</p>
-                                    <p className="text-[8px] text-stone-500 leading-none">Within 10km search zone.</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Active Coordination List */}
-            <div className="glass rounded-[3rem] p-10 border-white/5">
-                <div className="flex items-center justify-between mb-10">
-                    <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-3 italic">
-                        <History className="text-stone-400 w-8 h-8" />
-                        Live Response <span className="text-blood-600">Track</span>
-                    </h2>
-                    <div className="flex items-center gap-2 bg-stone-900 border border-white/5 px-4 py-2 rounded-xl text-[10px] font-black uppercase text-stone-500">
-                        Monitoring Engine v2.0
-                    </div>
-                </div>
-
-                <div className="space-y-4">
-                    {requests.length === 0 ? (
-                        <div className="text-center py-20 text-stone-600 italic font-medium">No active emergency signals detected.</div>
-                    ) : (
-                        requests.map((req) => (
-                            <motion.div
-                                key={req.id}
-                                layout
-                                onClick={() => setSelectedRequest(req)}
-                                className={cn(
-                                    "bg-white/5 rounded-[2rem] p-6 border transition-all cursor-pointer group relative overflow-hidden",
-                                    req.status === 'Completed' ? "border-green-500/20 bg-green-500/5" : "border-white/5 hover:border-blood-500/30 hover:bg-white/10"
-                                )}
-                            >
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-6">
-                                        <div className={cn(
-                                            "w-14 h-14 rounded-2xl flex items-center justify-center font-black text-xl border shadow-xl transition-all duration-500",
-                                            req.status === 'Completed' ? "bg-green-500 text-white border-green-400" : "bg-stone-900 text-blood-500 border-white/5 group-hover:bg-blood-600 group-hover:text-white"
-                                        )}>
-                                            {req.bloodType}
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-3 mb-1">
-                                                <h4 className="text-white font-black text-lg tracking-tight">{req.hospital}</h4>
-                                                <span className={cn(
-                                                    "px-2 py-0.5 rounded text-[7px] font-black uppercase tracking-widest",
-                                                    req.urgency === 'Critical' ? "bg-rose-500 text-white" : "bg-amber-500 text-white"
-                                                )}>{req.urgency}</span>
-                                            </div>
-                                            <div className="flex items-center gap-6 text-[9px] font-black uppercase tracking-[0.15em] text-stone-500">
-                                                <span className="flex items-center gap-2"><MapPin className="w-3.5 h-3.5 text-blood-500" /> {req.location}</span>
-                                                <span className="flex items-center gap-2"><Clock className="w-3.5 h-3.5" /> {new Date(req.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-6">
-                                        {req.acceptedBy ? (
-                                            <div className="flex flex-col items-end">
-                                                <p className="text-[8px] font-black text-stone-600 uppercase mb-1">Assigned To</p>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-white font-black text-[10px]">{req.acceptedBy}</span>
-                                                    <div className="w-6 h-6 bg-blood-600 rounded-lg flex items-center justify-center text-[10px] text-white font-black">{req.acceptedBy[0]}</div>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className="flex flex-col items-end">
-                                                <p className="text-[8px] font-black text-stone-600 uppercase mb-1">Status</p>
-                                                <div className="flex items-center gap-2 text-blood-500 animate-pulse">
-                                                    <div className="w-1.5 h-1.5 bg-blood-500 rounded-full" />
-                                                    <span className="text-[9px] font-black uppercase tracking-widest">Searching...</span>
-                                                </div>
-                                            </div>
-                                        )}
-                                        <div className="p-3 bg-white/5 rounded-xl text-stone-600 group-hover:text-white transition-colors">
-                                            <ArrowRight className="w-5 h-5" />
-                                        </div>
-                                    </div>
-                                </div>
-                            </motion.div>
-                        ))
-                    )}
-                </div>
-            </div>
-
-            {/* Side Panel Drawer */}
-            <DonorDetailPanel
-                request={selectedRequest ? requests.find(r => r.id === selectedRequest.id) || null : null}
-                onClose={() => setSelectedRequest(null)}
-            />
-
-            {/* Emergency Request Modal */}
-            {showRequestForm && (
-                <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl">
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="glass p-10 md:p-14 rounded-[4rem] max-w-2xl w-full relative border-blood-500/20"
-                    >
-                        <button onClick={() => setShowRequestForm(false)} className="absolute top-10 right-10 text-stone-500 hover:text-white transition-colors">
-                            <XCircle className="w-8 h-8" />
-                        </button>
-                        <h2 className="text-4xl font-black text-white mb-2 italic tracking-tighter">Emergency <span className="text-blood-600">Broadcast</span></h2>
-                        <p className="text-stone-500 mb-10 border-b border-white/5 pb-6 font-medium">Signals will be sent to all {form.bloodType} donors within immediate reach.</p>
-
-                        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div className="space-y-3">
-                                <label className="text-[10px] font-black uppercase text-stone-500 ml-1 tracking-[0.2em]">Target Blood Type</label>
-                                <select className="w-full bg-stone-900 border border-white/10 rounded-[1.5rem] py-5 px-6 text-white font-black text-lg focus:ring-2 focus:ring-blood-600 outline-none appearance-none" value={form.bloodType} onChange={(e) => setForm({ ...form, bloodType: e.target.value as BloodGroup })}>
-                                    {['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map(t => <option key={t} value={t}>{t}</option>)}
-                                </select>
-                            </div>
-                            <div className="space-y-3">
-                                <label className="text-[10px] font-black uppercase text-stone-500 ml-1 tracking-[0.2em]">Units Required</label>
-                                <input type="number" className="w-full bg-stone-900 border border-white/10 rounded-[1.5rem] py-5 px-6 text-white font-black text-lg focus:ring-2 focus:ring-blood-600 outline-none" value={form.units} onChange={(e) => setForm({ ...form, units: parseInt(e.target.value) || 1 })} />
-                            </div>
-                            <div className="space-y-3 md:col-span-2">
-                                <label className="text-[10px] font-black uppercase text-stone-500 ml-1 tracking-[0.2em]">Facility Name</label>
-                                <input type="text" className="w-full bg-stone-900 border border-white/10 rounded-[1.5rem] py-5 px-6 text-white font-black text-lg focus:ring-2 focus:ring-blood-600 outline-none placeholder:text-stone-700" placeholder="e.g. Hope Medical" value={form.hospital} onChange={(e) => setForm({ ...form, hospital: e.target.value })} />
-                            </div>
-                            <div className="space-y-3">
-                                <label className="text-[10px] font-black uppercase text-stone-500 ml-1 tracking-[0.2em]">Region / Location</label>
-                                <input type="text" className="w-full bg-stone-900 border border-white/10 rounded-[1.5rem] py-5 px-6 text-white font-black text-lg focus:ring-2 focus:ring-blood-600 outline-none" placeholder="Sector Name" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
-                            </div>
-                            <div className="space-y-3">
-                                <label className="text-[10px] font-black uppercase text-stone-500 ml-1 tracking-[0.2em]">Urgency Matrix</label>
-                                <div className="flex gap-2">
-                                    {(['Normal', 'Urgent', 'Critical'] as Urgency[]).map(u => (
-                                        <button key={u} type="button" onClick={() => setForm({ ...form, urgency: u })} className={cn("flex-1 py-4 px-2 rounded-xl text-[9px] font-black uppercase border transition-all", form.urgency === u ? "bg-blood-600 border-blood-600 text-white shadow-xl shadow-blood-900/40" : "bg-stone-800 border-white/5 text-stone-600")}>{u}</button>
-                                    ))}
-                                </div>
-                            </div>
-                            <button type="submit" className="md:col-span-2 blood-gradient text-white py-6 rounded-[2.5rem] font-black text-xl shadow-2xl shadow-blood-900/60 flex items-center justify-center gap-4 mt-4 hover:scale-[1.02] active:scale-[0.98] transition-all"><Send className="w-6 h-6" /> INITIATE SIGNAL BROADCAST</button>
-                        </form>
-                    </motion.div>
-                </div>
-            )}
+      <div className="flex-1 flex items-center justify-center p-8">
+        <div className="w-16 h-16 bg-stone-100 rounded-3xl flex items-center justify-center animate-pulse">
+           <Activity className="w-8 h-8 text-[var(--bg-dark)]" />
         </div>
+      </div>
     );
+  }
+
+  const kpis = [
+    { label: 'Active Requests', value: activeRequests.filter(r => r.status !== 'completed' && r.status !== 'cancelled').length, icon: AlertCircle, color: 'text-red-500', bg: 'bg-red-50' },
+    { label: 'Nearby Donors', value: nearbyDonorsCount, icon: Users, color: 'text-blue-500', bg: 'bg-blue-50' },
+    { label: 'Blood Units', value: Object.values(inventory).reduce((a, b) => a + b, 0), icon: Database, color: 'text-[var(--orange-500)]', bg: 'bg-[var(--orange-50)]' },
+    { label: 'Success Rate', value: '94%', icon: Activity, color: 'text-green-500', bg: 'bg-green-50', trend: '+2.5%', trendUp: true },
+  ];
+
+  return (
+    <motion.div variants={pageVariants as any} initial="initial" animate="animate" exit="exit" className="max-w-7xl mx-auto space-y-8">
+      
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="font-display text-3xl font-extrabold text-[var(--text-primary)] tracking-tight">
+            Dashboard Overview
+          </h1>
+          <p className="text-[var(--text-muted)] font-medium mt-1">
+            Monitoring {currentUser?.hospitalName} live operations.
+          </p>
+        </div>
+        <div className="flex bg-white p-1 rounded-xl border border-[var(--border-light)] shadow-sm">
+           <button 
+             onClick={() => setIsEmergencyFormOpen(true)}
+             className="px-6 py-2.5 bg-red-600 text-white rounded-lg font-bold flex items-center gap-2 hover:bg-red-700 transition-all shadow-md"
+           >
+             <Plus className="w-5 h-5" /> New Emergency
+           </button>
+        </div>
+      </div>
+
+      {/* KPI Grid */}
+      <motion.div variants={staggerContainer as any} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {kpis.map((kpi, i) => (
+          <motion.div 
+            key={i} 
+            variants={cardVariants as any} 
+            onClick={() => {
+              if (kpi.label === 'Active Requests') navigate('/admin/requests');
+              if (kpi.label === 'Nearby Donors') navigate('/admin/donors');
+              if (kpi.label === 'Blood Units') navigate('/admin/inventory');
+            }}
+            className="bg-[var(--bg-card)] p-6 rounded-[2rem] border border-[var(--border-light)] shadow-sm cursor-pointer hover:shadow-md hover:border-[var(--orange-300)] transition-all"
+          >
+            <div className="flex justify-between items-start mb-4">
+              <div className={`w-12 h-12 rounded-2xl ${kpi.bg} ${kpi.color} flex items-center justify-center`}>
+                <kpi.icon className="w-6 h-6" />
+              </div>
+              {kpi.trend && (
+                <div className={`flex items-center gap-1 text-xs font-bold ${kpi.trendUp ? 'text-green-600' : 'text-red-600'}`}>
+                  {kpi.trendUp ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                  {kpi.trend}
+                </div>
+              )}
+            </div>
+            <p className="font-body text-sm font-bold text-[var(--text-muted)] mb-1">{kpi.label}</p>
+            <p className="font-display text-3xl font-black text-[var(--text-primary)]">{kpi.value}</p>
+          </motion.div>
+        ))}
+      </motion.div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* Active Emergencies List */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="flex items-center justify-between px-2">
+            <h2 className="font-display text-xl font-bold flex items-center gap-2">
+               Live Emergencies <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            </h2>
+            <button onClick={() => navigate('/admin/map')} className="text-[13px] font-bold text-[var(--orange-600)] flex items-center gap-1 hover:underline">
+               Open Map <MapIcon className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="space-y-6">
+             {displayRequests.length === 0 ? (
+               <div className="bg-[var(--bg-subtle)] border border-dashed border-[var(--border-light)] rounded-[2rem] p-12 text-center">
+                  <Activity className="w-12 h-12 text-stone-300 mx-auto mb-4" />
+                  <p className="font-bold text-[var(--text-primary)]">No active requests found.</p>
+                  <p className="text-sm text-[var(--text-muted)]">Everything is running smoothly.</p>
+               </div>
+             ) : (
+               displayRequests
+                 .map((req) => (
+                  <motion.div 
+                    key={req._id}
+                    layout
+                    onClick={() => setSelectedRequest(req)}
+                    className="group bg-[var(--bg-card)] p-5 rounded-[1.5rem] border border-[var(--border-light)] shadow-sm hover:shadow-md hover:border-[var(--orange-300)] transition-all cursor-pointer flex items-center gap-6"
+                  >
+                     <div className="shrink-0">
+                        <BloodGroupBadge group={req.bloodGroup} size="md" />
+                     </div>
+                     
+                     <div className="flex-1 overflow-hidden">
+                        <div className="flex items-center gap-3 mb-1">
+                           <h3 className="font-bold text-[var(--text-primary)] truncate">ID: {req._id.slice(-8).toUpperCase()}</h3>
+                           <StatusBadge status={req.status} />
+                        </div>
+                        <div className="flex items-center gap-4 text-[13px] text-[var(--text-muted)] font-medium">
+                           <span className="flex items-center gap-1"><Users className="w-4 h-4" /> {req.unitsRequired} Units</span>
+                           <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> {new Date(req.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                     </div>
+
+                     <div className="shrink-0 flex items-center gap-4">
+                        <div className="hidden sm:block text-right">
+                           <p className="text-[11px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-1">Urgency</p>
+                           <span className={`text-[12px] font-bold ${req.urgency === 'Critical' ? 'text-red-600' : 'text-[var(--orange-600)]'}`}>{req.urgency}</span>
+                        </div>
+                        <div className="w-10 h-10 rounded-full bg-[var(--bg-subtle)] group-hover:bg-[var(--orange-100)] flex items-center justify-center transition-colors">
+                           <ChevronRight className="w-5 h-5 text-[var(--text-muted)] group-hover:text-[var(--orange-600)]" />
+                        </div>
+                     </div>
+                  </motion.div>
+                ))
+             )}
+          </div>
+        </div>
+
+        {/* Sidebar Column: Blood Inventory */}
+        <div className="space-y-6">
+          <motion.div variants={cardVariants as any} className="bg-[var(--bg-dark)] rounded-[2rem] p-6 text-white shadow-xl relative overflow-hidden">
+             <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+                <Database className="w-32 h-32" />
+             </div>
+             
+             <h3 className="font-display font-bold text-lg mb-6 relative z-10 flex items-center justify-between">
+                Blood Inventory
+                <Droplet className="w-5 h-5 text-[var(--orange-400)]" />
+             </h3>
+
+             <div className="grid grid-cols-2 gap-3 relative z-10">
+                {Object.entries(inventory).map(([group, units]) => (
+                   <div key={group} className="bg-white/10 rounded-2xl p-4 border border-white/10">
+                      <div className="font-display text-[11px] font-black uppercase tracking-widest opacity-60 mb-2">{group}</div>
+                      <div className="flex items-end justify-between">
+                         <span className="text-2xl font-black text-[var(--orange-400)]">{units as number}</span>
+                         <span className="text-[10px] font-bold opacity-50 mb-1">Units</span>
+                      </div>
+                   </div>
+                ))}
+             </div>
+
+             <button 
+               onClick={() => navigate('/admin/inventory')}
+               className="w-full mt-6 py-3.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-[13px] font-bold transition-all"
+             >
+                Manage Inventory
+             </button>
+          </motion.div>
+
+          <motion.div variants={cardVariants as any} className="bg-[var(--bg-card)] rounded-[2rem] p-6 border border-[var(--border-light)] shadow-sm">
+             <h3 className="font-display font-bold text-lg mb-4">System Alerts</h3>
+             <div className="space-y-4">
+                {displayRequests.slice(0, 3).map(req => (
+                  <div key={req._id} className="flex gap-3">
+                     <div className={`w-1.5 h-1.5 rounded-full ${req.status === 'matched' ? 'bg-blue-500' : 'bg-red-500'} mt-2 shrink-0 animate-pulse`} />
+                     <p className="text-[13px] text-[var(--text-secondary)] font-medium">
+                        Emergency {req._id.slice(-6).toUpperCase()} is currently <b>{req.status}</b>.
+                     </p>
+                  </div>
+                ))}
+                {displayRequests.length === 0 && (
+                  <p className="text-xs text-[var(--text-muted)] italic">No recent system alerts.</p>
+                )}
+             </div>
+          </motion.div>
+        </div>
+      </div>
+
+      {/* Modals */}
+      <EmergencyForm 
+        isOpen={isEmergencyFormOpen} 
+        onClose={() => setIsEmergencyFormOpen(false)} 
+      />
+      
+      <DonorDetailPanel 
+        request={selectedRequest} 
+        onClose={() => setSelectedRequest(null)}
+        onUpdate={fetchData}
+      />
+
+    </motion.div>
+  );
 }

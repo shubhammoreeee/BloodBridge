@@ -1,267 +1,201 @@
+import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-    X,
-    MapPin,
-    Phone,
-    History,
-    Award,
-    Zap,
-    CheckCircle,
-    Clock,
-    Droplets,
-    MessageSquare,
-    Plus
-} from 'lucide-react';
-import { useAppStore, type BloodRequest, type DonationProgress } from '../store/useAppStore';
-import { cn } from '../lib/utils';
+import { X, Navigation, Phone, CheckCircle2, MapPin, Activity, ShieldAlert } from 'lucide-react';
+import BloodGroupBadge from './BloodGroupBadge';
+import StatusBadge from './StatusBadge';
+import { useRequests } from '../lib/hooks/useRequests';
+import { useAppStore } from '../store/useAppStore';
+import MissionTracker from './MissionTracker';
 
-interface DonorDetailPanelProps {
-    request: BloodRequest | null;
-    onClose: () => void;
+interface Props {
+  request: any | null;
+  onClose: () => void;
+  onUpdate: () => void;
 }
 
-export default function DonorDetailPanel({ request, onClose }: DonorDetailPanelProps) {
-    const { updateRequestStatus, addNotification, mockDonors } = useAppStore();
+export default function DonorDetailPanel({ request, onClose, onUpdate }: Props) {
+  const { updateStatus } = useRequests();
+  const { addToast } = useAppStore();
+  const [isLoading, setIsLoading] = React.useState(false);
 
-    if (!request) return null;
+  if (!request) return null;
 
-    // Find donor info if accepted
-    const donor = request.acceptedBy
-        ? (mockDonors.find(d => d.name === request.acceptedBy) || {
-            name: request.acceptedBy,
-            bloodGroup: request.bloodType,
-            distance: '2.1 km',
-            points: 450,
-            lastDonation: '3 months ago',
-            phone: '+91 98765 43210'
-        })
-        : null;
+  const handleStatusChange = async (newStatus: string) => {
+    setIsLoading(true);
+    try {
+      await updateStatus(request._id, newStatus);
+      if (newStatus === 'cancelled' || newStatus === 'completed') {
+        useAppStore.getState().removeRequest(request._id);
+        onClose();
+      }
+      addToast(`Request marked as ${newStatus}`, 'success');
+      onUpdate();
+    } catch (e: any) {
+      addToast(e.response?.data?.message || 'Failed to update status', 'alert');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    const steps: DonationProgress[] = ['Accepted', 'Traveling', 'At Hospital', 'Donating', 'Completed'];
-    const currentStepIndex = request.progress ? steps.indexOf(request.progress) : -1;
-
-    const handleAction = (nextProgress: DonationProgress, message: string) => {
-        const nextStatus = nextProgress === 'Completed' ? 'Completed' : 'Accepted';
-        updateRequestStatus(request.id, nextStatus, request.acceptedBy, nextProgress);
-        addNotification(message, nextStatus === 'Completed' ? 'success' : 'info');
-    };
+  const StatusTimeline = () => {
+    const steps = ['searching', 'matched', 'traveling', 'at_hospital', 'donating', 'completed'];
+    const currentIndex = steps.indexOf(request.status);
 
     return (
-        <AnimatePresence>
-            <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={onClose}
-                className="fixed inset-0 bg-black/80 backdrop-blur-md z-[150] flex justify-end"
-            >
-                <motion.div
-                    initial={{ x: '100%' }}
-                    animate={{ x: 0 }}
-                    exit={{ x: '100%' }}
-                    transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="w-full max-w-md bg-stone-900 border-l border-white/5 h-full overflow-y-auto font-outfit relative"
-                >
-                    <div className="p-8 pb-32">
-                        <div className="flex justify-between items-center mb-10">
-                            <h2 className="text-2xl font-black text-white italic tracking-tighter">
-                                Request <span className="text-blood-600">Details</span>
-                            </h2>
-                            <button
-                                onClick={onClose}
-                                className="p-3 bg-white/5 hover:bg-white/10 text-stone-500 hover:text-white rounded-2xl transition-all"
-                            >
-                                <X className="w-6 h-6" />
-                            </button>
-                        </div>
-
-                        {/* Hospital Info Card */}
-                        <div className="bg-stone-950 p-6 rounded-[2rem] border border-white/5 mb-8">
-                            <div className="flex items-start gap-5 mb-6">
-                                <div className="w-16 h-16 bg-blood-600 rounded-[1.2rem] flex items-center justify-center text-2xl font-black text-white shadow-2xl">
-                                    {request.bloodType}
-                                </div>
-                                <div>
-                                    <h3 className="text-white font-black text-xl leading-tight mb-1">{request.hospital}</h3>
-                                    <div className="flex items-center gap-2 text-[10px] font-black text-stone-500 uppercase tracking-widest">
-                                        <MapPin className="w-3 h-3 text-blood-500" /> {request.location}
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="flex justify-between items-center pt-6 border-t border-white/5">
-                                <div className="text-center">
-                                    <p className="text-[8px] font-black text-stone-600 uppercase mb-1">Urgency</p>
-                                    <span className={cn(
-                                        "px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider",
-                                        request.urgency === 'Critical' ? "bg-rose-500/20 text-rose-500" : "bg-amber-500/20 text-amber-500"
-                                    )}>{request.urgency}</span>
-                                </div>
-                                <div className="text-center">
-                                    <p className="text-[8px] font-black text-stone-600 uppercase mb-1">Units Needed</p>
-                                    <span className="text-white font-black">{request.units}</span>
-                                </div>
-                                <div className="text-center">
-                                    <p className="text-[8px] font-black text-stone-600 uppercase mb-1">Status</p>
-                                    <span className="text-blood-500 font-black text-[9px] uppercase tracking-widest">{request.status}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {!donor ? (
-                            <div className="text-center py-12 border-2 border-dashed border-stone-800 rounded-[2.5rem] bg-stone-900/50">
-                                <div className="w-16 h-16 bg-stone-800 rounded-full flex items-center justify-center mx-auto mb-4 relative">
-                                    <div className="absolute inset-0 bg-blood-600/20 rounded-full animate-ping" />
-                                    <Clock className="w-8 h-8 text-stone-500 animate-pulse" />
-                                </div>
-                                <h4 className="text-white font-black text-lg mb-1 uppercase tracking-tight">Searching for Donor</h4>
-                                <p className="text-stone-500 text-xs px-10">System is broadcasting signals to local {request.bloodType} donors.</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-8">
-                                {/* Donor Profile */}
-                                <div>
-                                    <h4 className="text-[10px] font-black text-stone-500 uppercase tracking-[0.2em] mb-4">Life-Saver Profile</h4>
-                                    <div className="bg-stone-900 border border-white/5 rounded-[2.5rem] p-8 relative overflow-hidden group">
-                                        <div className="absolute top-0 right-0 w-24 h-24 bg-blood-600/5 blur-3xl" />
-
-                                        <div className="flex items-center gap-6 mb-8">
-                                            <div className="w-20 h-20 bg-blood-600 rounded-[1.5rem] flex items-center justify-center text-3xl font-black text-white shadow-2xl relative">
-                                                {donor.name[0]}
-                                                <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-green-500 rounded-full border-4 border-stone-900 flex items-center justify-center">
-                                                    <CheckCircle className="w-4 h-4 text-white" />
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <h3 className="text-white font-black text-2xl leading-tight mb-1">{donor.name}</h3>
-                                                <div className="flex items-center gap-3">
-                                                    <span className="flex items-center gap-1.5 text-[10px] font-black text-stone-500 uppercase">
-                                                        <Droplets className="w-3 h-3 text-blood-500" /> {donor.bloodGroup}
-                                                    </span>
-                                                    <span className="w-1 h-1 bg-stone-800 rounded-full" />
-                                                    <span className="flex items-center gap-1.5 text-[10px] font-black text-stone-500 uppercase">
-                                                        <MapPin className="w-3 h-3 text-blue-500" /> {donor.distance || '2.1 KM'}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                                                <p className="text-[8px] font-black text-stone-600 uppercase mb-1">Rewards</p>
-                                                <div className="flex items-center gap-2">
-                                                    <Award className="w-4 h-4 text-amber-500" />
-                                                    <span className="text-white font-black text-sm">{(donor as any).points || 450} Pts</span>
-                                                </div>
-                                            </div>
-                                            <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                                                <p className="text-[8px] font-black text-stone-600 uppercase mb-1">Last Date</p>
-                                                <div className="flex items-center gap-2">
-                                                    <History className="w-4 h-4 text-blue-500" />
-                                                    <span className="text-white font-black text-sm">{(donor as any).lastDonation || '3m ago'}</span>
-                                                </div>
-                                            </div>
-                                            <div className="col-span-2 bg-white/5 p-4 rounded-2xl border border-white/5 flex items-center justify-between">
-                                                <div className="flex items-center gap-3">
-                                                    <Phone className="w-4 h-4 text-green-500" />
-                                                    <span className="text-white font-black text-sm">{(donor as any).phone || '+91 98765 43210'}</span>
-                                                </div>
-                                                <button className="p-2 bg-blood-600 rounded-xl text-white">
-                                                    <MessageSquare className="w-4 h-4" />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Donation Progress */}
-                                <div>
-                                    <h4 className="text-[10px] font-black text-stone-500 uppercase tracking-[0.2em] mb-4">Donation Mission Status</h4>
-                                    <div className="bg-stone-900 border border-white/5 rounded-[2.5rem] p-8">
-                                        <div className="space-y-6">
-                                            {steps.map((step, idx) => {
-                                                const isPast = idx < currentStepIndex;
-                                                const isCurrent = idx === currentStepIndex;
-
-                                                return (
-                                                    <div key={step} className="flex gap-4 group">
-                                                        <div className="flex flex-col items-center">
-                                                            <div className={cn(
-                                                                "w-8 h-8 rounded-full flex items-center justify-center border transition-all duration-300",
-                                                                isPast ? "bg-green-500 border-green-400" :
-                                                                    isCurrent ? "bg-blood-600 border-blood-400 animate-pulse" :
-                                                                        "bg-stone-800 border-white/5"
-                                                            )}>
-                                                                {isPast ? <CheckCircle className="w-4 h-4 text-white" /> : <div className="w-1.5 h-1.5 rounded-full bg-white/20" />}
-                                                            </div>
-                                                            {idx !== steps.length - 1 && (
-                                                                <div className={cn(
-                                                                    "w-px h-10 transition-colors duration-300",
-                                                                    isPast ? "bg-green-500" : "bg-stone-800"
-                                                                )} />
-                                                            )}
-                                                        </div>
-                                                        <div className="pt-0.5">
-                                                            <h5 className={cn(
-                                                                "font-black text-sm uppercase tracking-tight",
-                                                                isPast ? "text-green-500" : isCurrent ? "text-white" : "text-stone-600"
-                                                            )}>{step}</h5>
-                                                            {isCurrent && <p className="text-[9px] text-blood-500 font-bold uppercase mt-1">Live Action Required</p>}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Persistent Footer Actions */}
-                    {donor && request.status !== 'Completed' && (
-                        <div className="absolute bottom-0 left-0 right-0 p-8 bg-stone-900/95 backdrop-blur-md border-t border-white/5">
-                            <div className="grid grid-cols-1 gap-4">
-                                {request.progress === 'Accepted' && (
-                                    <button
-                                        onClick={() => handleAction('Traveling', 'Pickup request assigned to donor.')}
-                                        className="w-full blood-gradient text-white py-5 rounded-[1.5rem] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 shadow-2xl shadow-blood-900/40"
-                                    >
-                                        <Zap className="w-5 h-5" /> Assign Pickup
-                                    </button>
-                                )}
-                                {request.progress === 'Traveling' && (
-                                    <button
-                                        onClick={() => handleAction('At Hospital', 'Donor status updated to: Arrived at Facility.')}
-                                        className="w-full bg-blue-600 text-white py-5 rounded-[1.5rem] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 shadow-2xl shadow-blue-900/40"
-                                    >
-                                        <MapPin className="w-5 h-5" /> Mark Reached Hospital
-                                    </button>
-                                )}
-                                {request.progress === 'At Hospital' && (
-                                    <button
-                                        onClick={() => handleAction('Donating', 'Blood extraction process started.')}
-                                        className="w-full bg-amber-600 text-white py-5 rounded-[1.5rem] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 shadow-2xl shadow-amber-900/40"
-                                    >
-                                        <Plus className="w-5 h-5" /> Start Donation Process
-                                    </button>
-                                )}
-                                {request.progress === 'Donating' && (
-                                    <button
-                                        onClick={() => handleAction('Completed', 'Donation MISSION COMPLETED. Point awarded.')}
-                                        className="w-full bg-green-600 text-white py-5 rounded-[1.5rem] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 shadow-2xl shadow-green-900/40"
-                                    >
-                                        <CheckCircle className="w-5 h-5" /> Mark Donation Completed
-                                    </button>
-                                )}
-                                <button className="w-full bg-white/5 text-stone-400 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 border border-white/5">
-                                    <MessageSquare className="w-4 h-4" /> Contact Emergency Response
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                </motion.div>
-            </motion.div>
-        </AnimatePresence>
+      <div className="bg-[var(--bg-subtle)] p-5 rounded-2xl border border-[var(--border-light)] mb-6">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-4">Live Mission Status</h4>
+        <div className="relative flex justify-between">
+           <div className="absolute top-1/2 left-0 right-0 h-1 bg-[var(--border-light)] -translate-y-1/2 rounded-full" />
+           <div className="absolute top-1/2 left-0 h-1 bg-green-500 -translate-y-1/2 rounded-full transition-all duration-500" style={{ width: `${Math.max(0, currentIndex) / (steps.length - 1) * 100}%` }} />
+           
+           {steps.map((step, i) => (
+             <div key={step} className={`relative z-10 w-4 h-4 rounded-full border-2 ${
+               i <= currentIndex ? 'bg-green-500 border-green-500 shadow-[var(--shadow-glow-green)]' : 'bg-[var(--bg-card)] border-[var(--border-light)]'
+             }`} title={step.replace('_', ' ')} />
+           ))}
+        </div>
+        <div className="text-center mt-3 font-bold text-[14px] text-[var(--text-primary)] capitalize">
+           {request.status.replace('_', ' ')}
+        </div>
+      </div>
     );
+  };
+
+  return (
+    <AnimatePresence>
+      <motion.div 
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[90]"
+      />
+      
+      <motion.div 
+        initial={{ x: '100%', opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: '100%', opacity: 0 }} transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+        className="fixed top-0 bottom-0 right-0 w-full sm:w-[440px] bg-[var(--bg-card)] border-l border-[var(--border-light)] z-[100] shadow-2xl flex flex-col"
+      >
+        <div className="flex items-center justify-between p-5 border-b border-[var(--border-light)]">
+          <div>
+            <h3 className="font-display font-bold text-lg text-[var(--text-primary)]">Emergency Details</h3>
+            <p className="text-xs text-[var(--text-muted)] font-medium font-mono mt-0.5">ID: {request._id.slice(-8).toUpperCase()}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-[var(--bg-subtle)] rounded-full transition-colors text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
+          
+          <div className="flex items-start justify-between gap-4">
+             <div>
+               <div className="flex items-center gap-2 mb-2">
+                 <StatusBadge status={request.status} />
+                 <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-widest ${
+                   request.urgency === 'Critical' ? 'bg-red-50 text-red-600' : 'bg-[var(--orange-50)] text-[var(--orange-600)]'
+                 }`}>{request.urgency}</span>
+               </div>
+               <div className="font-body text-sm text-[var(--text-muted)] flex items-center gap-2">
+                  <Activity className="w-4 h-4"/> {request.unitsRequired} Units Required
+               </div>
+             </div>
+             <BloodGroupBadge group={request.bloodGroup} size="lg" />
+          </div>
+
+          <StatusTimeline />
+
+          {request.notes && (
+             <div className="bg-red-50 border border-red-100 p-4 rounded-xl flex gap-3">
+               <ShieldAlert className="w-5 h-5 text-red-500 shrink-0 mt-0.5"/>
+               <div>
+                  <h4 className="font-bold text-red-800 text-sm mb-1">Medical Notes</h4>
+                  <p className="text-sm text-red-700">{request.notes}</p>
+               </div>
+             </div>
+          )}
+
+          {request.assignedDonorId ? (
+            <div className="border border-[var(--border-light)] rounded-[1.5rem] overflow-hidden">
+               <div className="bg-[var(--bg-subtle)] p-4 border-b border-[var(--border-light)] flex justify-between items-center">
+                 <h4 className="font-bold text-[var(--text-primary)]">Assigned Donor</h4>
+                 <div className="flex gap-2">
+                    <button className="w-8 h-8 rounded-full bg-white border border-[var(--border-light)] flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--orange-500)] shadow-sm"><Phone className="w-4 h-4" /></button>
+                 </div>
+               </div>
+               <div className="p-5">
+                 <div className="flex items-center gap-4 mb-4">
+                   <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[var(--orange-400)] to-[var(--orange-600)] text-white font-black text-2xl flex flex-shrink-0 flex-col items-center justify-center">
+                      {request.assignedDonorId.name?.[0] || 'D'}
+                   </div>
+                   <div>
+                     <h3 className="font-display font-bold text-lg">{request.assignedDonorId.name || 'Anonymous Donor'}</h3>
+                     <p className="text-sm text-[var(--text-muted)] font-medium">{request.assignedDonorId.phone || 'Phone hidden'}</p>
+                   </div>
+                 </div>
+                 
+                 {['matched', 'traveling', 'at_hospital'].includes(request.status) ? (
+                    <div className="mt-4 -mx-1">
+                       <MissionTracker request={request} role="admin" />
+                    </div>
+                 ) : request.status === 'traveling' && (
+                    <div className="bg-[var(--orange-50)] text-[var(--orange-800)] p-3 rounded-xl text-sm font-medium flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center">
+                         <Navigation className="w-4 h-4 text-[var(--orange-600)]"/>
+                      </div>
+                      Donor is currently traveling to your location. ETA ~15 mins.
+                    </div>
+                 )}
+               </div>
+            </div>
+          ) : (
+            <div className="bg-[var(--bg-subtle)] rounded-2xl p-6 text-center border border-dashed border-[var(--border-light)]">
+               <div className="w-12 h-12 bg-white rounded-full flex flex-col items-center justify-center shadow-sm mx-auto mb-3">
+                 <div className="w-4 h-4 border-2 border-[var(--orange-500)] border-t-transparent rounded-full animate-spin" />
+               </div>
+               <h4 className="font-bold text-[var(--text-primary)] mb-1">Searching for Match</h4>
+               <p className="text-sm text-[var(--text-muted)]">Broadcasting to eligible {request.bloodGroup} donors heavily within a 10km radius...</p>
+            </div>
+          )}
+
+        </div>
+
+        {/* Action Bar */}
+        {request.status !== 'completed' && request.status !== 'cancelled' && (
+          <div className="p-5 border-t border-[var(--border-light)] bg-white space-y-3">
+            {request.assignedDonorId && request.status === 'traveling' && (
+              <button 
+                disabled={isLoading} onClick={() => handleStatusChange('at_hospital')}
+                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[var(--orange-400)] to-[var(--orange-600)] text-white font-bold flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all"
+              >
+                 <MapPin className="w-5 h-5" /> Mark Donor as Arrived
+              </button>
+            )}
+            {request.assignedDonorId && request.status === 'at_hospital' && (
+              <button 
+                disabled={isLoading} onClick={() => handleStatusChange('donating')}
+                className="w-full py-3.5 rounded-xl bg-red-500 text-white font-bold flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all"
+              >
+                 <Activity className="w-5 h-5 animate-pulse" /> Begin Donation
+              </button>
+            )}
+            {request.assignedDonorId && request.status === 'donating' && (
+              <button 
+                disabled={isLoading} onClick={() => handleStatusChange('completed')}
+                className="w-full py-3.5 rounded-xl bg-green-500 text-white font-bold flex flex-col items-center justify-center shadow-md hover:shadow-lg transition-all"
+              >
+                 <span className="flex items-center gap-2"><CheckCircle2 className="w-5 h-5" /> Donation Completed</span>
+                 <span className="text-[10px] font-medium mt-0.5 opacity-80">(Awards 100 PTS to Donor)</span>
+              </button>
+            )}
+            
+            <button 
+               disabled={isLoading} onClick={() => handleStatusChange('cancelled')}
+               className="w-full py-3 rounded-xl bg-[var(--bg-subtle)] text-stone-600 font-bold hover:bg-stone-200 transition-colors"
+            >
+               Cancel Request
+            </button>
+          </div>
+        )}
+
+      </motion.div>
+    </AnimatePresence>
+  );
 }
